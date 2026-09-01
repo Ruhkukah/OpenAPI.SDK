@@ -1,9 +1,23 @@
 ﻿using Alor.OpenAPI.Enums;
+using Alor.OpenAPI.Models;
 
 namespace Alor.OpenAPI.Interfaces
 {
     public interface ICwsManager : IDisposable
     {
+        /// <summary>
+        /// Ensures the command WebSocket is authorized and ready.
+        /// </summary>
+        Task WarmupAsync();
+
+        DateTime? AuthorizedUntilUtc { get; }
+
+        string? LastAuthorizationError { get; }
+
+        bool TryGetAndRemoveCommandSendTimestampTicks(string requestGuid, out long sendTimestampTicks);
+
+        void SetRawCommandMessageHandler(Action<CwsRawCommandMessage>? handler);
+
         /// <include file='../XmlDocs/ICwsManager.xml' path='Docs/Members[@name="ICwsManager"]/Member[@name="CreateMarketOrderAsync"]/*' />
         public Task<string> CreateMarketOrderAsync(string portfolio, Side side, int quantity, string symbol,
             Exchange exchange, string? instrumentGroup = null, TimeInForce timeInForce = TimeInForce.OneDay,

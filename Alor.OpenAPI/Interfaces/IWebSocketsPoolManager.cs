@@ -7,6 +7,7 @@ namespace Alor.OpenAPI.Interfaces
     {
         ISubscriptionManager Subscriptions { get; }
         ICwsManager CommandWs { get; }
+        IEnumerable<WebSocketInfoDetails> GetWebSocketsInfoDetail();
     }
 
     internal interface IInternalWebSocketsPoolManagerActions : IDisposable
@@ -16,5 +17,7 @@ namespace Alor.OpenAPI.Interfaces
         void CalculateWebSocketsInfoSentRecieveRates();
         void SetWsResponseMessageHandler(Action<WsResponseMessage>? handler);
         void SetWsResponseCommandMessageHandler(Action<WsResponseCommandMessage>? handler);
+        void SetRawWireMessageHandler(Action<WsRawWireMessage>? handler);
+        void SetRawCwsCommandMessageHandler(Action<CwsRawCommandMessage>? handler);
     }
 }

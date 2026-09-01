@@ -1,6 +1,7 @@
 ﻿using Alor.OpenAPI.Utilities;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading.Channels;
@@ -14,8 +15,8 @@ namespace Alor.OpenAPI.Websocket
         public Func<IWebSocketInfo, Exception, Task>? Error { get; set; }
         public Action<IWebSocketInfo, string>? Warning { get; set; }
 
-        private readonly ConcurrentDictionary<Action<IWebSocketInfo, (byte[] data, int len, DateTime timestamp)>, bool> _msgSubs = [];
-        public event Action<IWebSocketInfo, (byte[] data, int len, DateTime timestamp)> Message
+        private readonly ConcurrentDictionary<Action<IWebSocketInfo, (byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks)>, bool> _msgSubs = [];
+        public event Action<IWebSocketInfo, (byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks)> Message
         {
             add => _msgSubs.TryAdd(value, true);
             remove => _msgSubs.TryRemove(value, out _);
@@ -36,13 +37,17 @@ namespace Alor.OpenAPI.Websocket
         private long PrevSentCount { get; set; }
 
         public DateTime? LastUpdate { get; private set; }
+        public DateTime? LastDisconnectUtc { get; set; }
+        public DateTime? LastReconnectStartUtc { get; set; }
+        public DateTime? LastReconnectSuccessUtc { get; set; }
+        public long? LastDowntimeMs { get; set; }
 
 
         public int SocketId { get; } = socketId;
         public string Name { get; } = name;
 
         private CancellationTokenSource _cts = new();
-        private Channel<(byte[] data, int len, DateTime timestamp)>? _bucket;
+        private Channel<(byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks)>? _bucket;
 
         //10 seconds mute for startup
         private DateTime _lastConsumerSlowWarn = DateTime.UtcNow;
@@ -72,7 +77,7 @@ namespace Alor.OpenAPI.Websocket
 
             var ws = _webSocketClient;
             var cts = _cts = new();
-            _bucket = Channel.CreateBounded<(byte[] data, int len, DateTime timestamp)>(
+            _bucket = Channel.CreateBounded<(byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks)>(
                 new BoundedChannelOptions(int.MaxValue)
                 {
                     SingleReader = true,
@@ -106,7 +111,7 @@ namespace Alor.OpenAPI.Websocket
             }
         }
 
-        private async Task StartMultiplexerLoop(Channel<(byte[] data, int len, DateTime timestamp)>? channel)
+        private async Task StartMultiplexerLoop(Channel<(byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks)>? channel)
         {
             var cts = _cts;
             while (!cts.IsCancellationRequested)
@@ -116,7 +121,7 @@ namespace Alor.OpenAPI.Websocket
                 {
                     //using queue to preserve message order
                     //(msg, len) = await channel.Reader.ReadAsync(cts.Token);
-                    if (channel != null && channel.Reader.TryRead(out (byte[] msg, int len, DateTime timestamp) name))
+                    if (channel != null && channel.Reader.TryRead(out (byte[] msg, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks) name))
                     {
                         foreach (var handler in _msgSubs)
                         {
@@ -151,12 +156,20 @@ namespace Alor.OpenAPI.Websocket
             while (!_cts.IsCancellationRequested)
             {
                 var length = 0;
+                var receiveTimestampTicks = 0L;
+                var firstByteTimestampUtc = default(DateTime);
                 while (!_cts.IsCancellationRequested)
                 {
                     if (_webSocketClient == null) continue;
-                    
+
                     var rr = await _webSocketClient.ReceiveAsync(
                         new ArraySegment<byte>(buf, length, buf.Length - length), _cts.Token);
+                    if (rr.Count > 0 && receiveTimestampTicks == 0L)
+                    {
+                        firstByteTimestampUtc = DateTime.UtcNow;
+                        receiveTimestampTicks = Stopwatch.GetTimestamp();
+                    }
+
                     var completed = rr.EndOfMessage;
                     length += rr.Count;
 
@@ -172,7 +185,7 @@ namespace Alor.OpenAPI.Websocket
                 var timestampNow = DateTime.UtcNow;
                 var msg = ArrayPool<byte>.Shared.Rent(length);
                 Buffer.BlockCopy(buf, 0, msg, 0, length);
-                if (_bucket != null && _bucket.Writer.TryWrite((msg, length, timestampNow)))
+                if (_bucket != null && _bucket.Writer.TryWrite((msg, length, timestampNow, firstByteTimestampUtc, receiveTimestampTicks)))
                 {
                     ReceivedCount++;
                     LastUpdate = timestampNow;
@@ -187,16 +200,19 @@ namespace Alor.OpenAPI.Websocket
             }
         }
 
-        public async Task<bool> SendAsync(string json)
+        public async Task<(bool sent, DateTime sendTimestampUtc, long sendTimestampTicks)> SendAsync(string json)
         {
             try
             {
-                if (_webSocketClient is not { State: WebSocketState.Open })
-                    return false;
+                var webSocketClient = _webSocketClient;
+                if (webSocketClient is not { State: WebSocketState.Open })
+                    return (false, default, 0L);
 
-                await _webSocketClient.SendAsync(Encoding.UTF8.GetBytes(json), WebSocketMessageType.Text, true, _cts.Token);
+                var sendTimestampUtc = DateTime.UtcNow;
+                var sendTimestampTicks = Stopwatch.GetTimestamp();
+                await webSocketClient.SendAsync(Encoding.UTF8.GetBytes(json), WebSocketMessageType.Text, true, _cts.Token);
                 SentCount++;
-                return true;
+                return (true, sendTimestampUtc, sendTimestampTicks);
             }
             catch (Exception ex)
             {

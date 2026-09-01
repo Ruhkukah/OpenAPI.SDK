@@ -12,6 +12,10 @@ namespace Alor.OpenAPI.Interfaces
             Action<WsOrderBookSimple> orderBookChanged,
             IEnumerable<string?> tickersList,
             Exchange exchange, int depth = 20, string? instrumentGroup = null);
+        public Task<Dictionary<string, string>> OrderBookGetAndSubscribeSimpleAsync(
+            Action<WsOrderBookSimple> orderBookChanged,
+            IEnumerable<string?> tickersList,
+            Exchange exchange, int depth, string? instrumentGroup = null, int? frequency = null);
 
         Action<Action<WsOrderBookSimple>>? UpdateWsMessageHandlerWsOrderBookSimpleDelegat { get; set; }
 
@@ -19,7 +23,7 @@ namespace Alor.OpenAPI.Interfaces
         public Task<Dictionary<string, string>> OrderBookGetAndSubscribeSlimAsync(
             Action<WsOrderBookSlim> orderBookChanged,
             IEnumerable<string?> tickersList,
-            Exchange exchange, int depth = 20, string? instrumentGroup = null);
+            Exchange exchange, int depth = 20, string? instrumentGroup = null, int? frequency = null);
 
         Action<Action<WsOrderBookSlim>>? UpdateWsMessageHandlerWsOrderBookSlimDelegat { get; set; }
 
@@ -28,6 +32,10 @@ namespace Alor.OpenAPI.Interfaces
             Action<WsOrderBookHeavy> orderBookChanged,
             IEnumerable<string?> tickersList,
             Exchange exchange, int depth = 20, string? instrumentGroup = null);
+        public Task<Dictionary<string, string>> OrderBookGetAndSubscribeHeavyAsync(
+            Action<WsOrderBookHeavy> orderBookChanged,
+            IEnumerable<string?> tickersList,
+            Exchange exchange, int depth, string? instrumentGroup = null, int? frequency = null);
 
         Action<Action<WsOrderBookHeavy>>? UpdateWsMessageHandlerWsOrderBookHeavyDelegat { get; set; }
 

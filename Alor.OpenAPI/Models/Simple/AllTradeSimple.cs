@@ -90,7 +90,7 @@ namespace Alor.OpenAPI.Models.Simple
             sb.Append("  Board: ").Append(Board).Append(Environment.NewLine);
             sb.Append("  Qty: ").Append(Qty).Append(Environment.NewLine);
             sb.Append("  Price: ").Append(Price).Append(Environment.NewLine);
-            sb.Append("  Time: ").Append(Time).Append(Environment.NewLine);
+            sb.Append("  Time: ").Append(Time?.ToUniversalTime().AddHours(3).ToString("yyyy-MM-ddTHH:mm:ss.fffffff") + "+03:00").Append(Environment.NewLine);
             sb.Append("  Timestamp: ").Append(Timestamp).Append(Environment.NewLine);
             sb.Append("  Side: ").Append(Side).Append(Environment.NewLine);
             sb.Append("  Oi: ").Append(Oi).Append(Environment.NewLine);

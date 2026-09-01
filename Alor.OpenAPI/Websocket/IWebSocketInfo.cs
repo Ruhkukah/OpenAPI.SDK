@@ -9,7 +9,7 @@ namespace Alor.OpenAPI.Websocket
         Func<IWebSocketInfo, Task>? Closed { get; set; }
         Func<IWebSocketInfo, Exception, Task>? Error { get; set; }
         Action<IWebSocketInfo, string>? Warning { get; set; }
-        event Action<IWebSocketInfo, (byte[] data, int len, DateTime timestamp)> Message;
+        event Action<IWebSocketInfo, (byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks)> Message;
         WebSocketState State { get; }
 
         //GUID, Opcode
@@ -22,12 +22,16 @@ namespace Alor.OpenAPI.Websocket
         long SentCount { get; }
         long SentRate { get; }
         DateTime? LastUpdate { get; }
+        DateTime? LastDisconnectUtc { get; set; }
+        DateTime? LastReconnectStartUtc { get; set; }
+        DateTime? LastReconnectSuccessUtc { get; set; }
+        long? LastDowntimeMs { get; set; }
 
         int SocketId { get; }
         string Name { get; }
 
         Task StartAsync();
-        Task<bool> SendAsync(string json);
+        Task<(bool sent, DateTime sendTimestampUtc, long sendTimestampTicks)> SendAsync(string json);
         Task CloseSocketAndResetCounters();
 
         void CalculateReceiveRate();

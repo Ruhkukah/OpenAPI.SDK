@@ -84,7 +84,11 @@ namespace Alor.OpenAPI.Managers
                 UpdateWsMessageHandlerWsStopOrderSlimDelegat, UpdateWsMessageHandlerWsStopOrderHeavyDelegat);
 
             _cwsAuthService = new CwsAuthService(commandLogger, OnAuthMsgUpdatedAsync);
-            CommandWs = new CwsManager(OnCommandMsgUpdatedAsync, CwsAuthorizeAndSetRefreshTimer);
+            CommandWs = new CwsManager(
+                OnCommandMsgUpdatedAsync,
+                CwsAuthorizeAndSetRefreshTimer,
+                () => _cwsAuthService.AuthorizedUntilUtc,
+                () => _cwsAuthService.LastRefreshError);
 
             if (names != null)
             {
@@ -189,9 +193,13 @@ namespace Alor.OpenAPI.Managers
             _commandWebSocket.JwtUpdate(newToken);
         }
 
-        IEnumerable<WebSocketInfoDetails> IInternalWebSocketsPoolManagerActions.GetWebSocketsInfoDetail() =>
+        public IEnumerable<WebSocketInfoDetails> GetWebSocketsInfoDetail() =>
             _webSocketConnections
-                .Select(webSocketConnection => webSocketConnection.GetSocketInfoDetails()).Append(_commandWebSocket.GetSocketInfoDetails());
+                .Select(webSocketConnection => webSocketConnection.GetSocketInfoDetails())
+                .Append(_commandWebSocket.GetSocketInfoDetails());
+
+        IEnumerable<WebSocketInfoDetails> IInternalWebSocketsPoolManagerActions.GetWebSocketsInfoDetail() =>
+            GetWebSocketsInfoDetail();
 
         public void CalculateWebSocketsInfoSentRecieveRates()
         {
@@ -209,6 +217,12 @@ namespace Alor.OpenAPI.Managers
 
         public void SetWsResponseCommandMessageHandler(Action<WsResponseCommandMessage>? handler)
             => _webSocketMessageHandler.SetWsResponseCommandMessageHandler(handler);
+
+        public void SetRawWireMessageHandler(Action<WsRawWireMessage>? handler)
+            => _webSocketMessageHandler.SetRawWireMessageHandler(handler);
+
+        public void SetRawCwsCommandMessageHandler(Action<CwsRawCommandMessage>? handler)
+            => CommandWs.SetRawCommandMessageHandler(handler);
 
         private Task<bool[]> OnMsgDictionaryUpdatedAsync(Dictionary<string, string> dict)
         {
@@ -259,7 +273,7 @@ namespace Alor.OpenAPI.Managers
                 .ToArray()); // стартуем все таски параллельно
         }
 
-        private Task<bool> OnCommandMsgUpdatedAsync(string message) => _commandWebSocket.SendOrStartAndSendCws(message);
+        private Task<(DateTime sendTimestampUtc, long sendTimestampTicks)> OnCommandMsgUpdatedAsync(string message) => _commandWebSocket.SendOrStartAndSendCws(message);
         private Task<bool> OnAuthMsgUpdatedAsync(string message) => _commandWebSocket.SendOrStartAndSend(message);
         private Task CwsAuthorizeAndSetRefreshTimer() => _cwsAuthService.CwsAuthorizeAndSetRefreshTimer();
 

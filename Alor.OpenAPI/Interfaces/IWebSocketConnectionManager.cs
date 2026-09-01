@@ -10,7 +10,7 @@ namespace Alor.OpenAPI.Interfaces
         WebSocketInfoDetails GetSocketInfoDetails();
         void CalculateWebSocketInfoRecieveRate();
         void CalculateWebSocketInfoSentRate();
-        Task<bool> SendOrStartAndSendCws(string message);
+        Task<(DateTime sendTimestampUtc, long sendTimestampTicks)> SendOrStartAndSendCws(string message);
         Task<bool> SendOrStartAndSend(string message);
         Task<bool> SendOrStartAndSend(IReadOnlyCollection<string> messages);
     }

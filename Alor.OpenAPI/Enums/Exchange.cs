@@ -6,6 +6,7 @@ namespace Alor.OpenAPI.Enums
     public enum Exchange
     {
         [EnumMember(Value = "MOEX")] MOEX = 1,
-        [EnumMember(Value = "SPBX")] SPBX = 2
+        [EnumMember(Value = "SPBX")] SPBX = 2,
+        [EnumMember(Value = "UNITED")] UNITED = 3
     }
 }

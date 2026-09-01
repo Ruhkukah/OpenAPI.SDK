@@ -17,10 +17,11 @@ namespace Alor.OpenAPI.Managers
         private readonly ILogger _logger;
         private readonly ILogger _commandLogger;
         private readonly AlorOpenApiLogLevel _logLevel;
-        private readonly FrozenDictionary<ReadOnlyMemory<byte>, Action<(byte[] data, int len, DateTime timestamp)>> _handlers;
+        private readonly FrozenDictionary<ReadOnlyMemory<byte>, Action<(byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks)>> _handlers;
         private readonly ConcurrentDictionary<string, Parameters> _parameters;
         private Action<WsResponseMessage>? _wsResponseMessageChangedToUser;
         private Action<WsResponseCommandMessage>? _wsResponseCommandMessageChangedToUser;
+        private Action<WsRawWireMessage>? _rawWireMessageHandler;
         private Action<WsOrderBookSimple>? _wsOrderBookSimpleChangedToUser;
         private Action<WsOrderBookSlim>? _wsOrderBookSlimChangedToUser;
         private Action<WsOrderBookHeavy>? _wsOrderBookHeavyChangedToUser;
@@ -220,6 +221,8 @@ namespace Alor.OpenAPI.Managers
             => _wsResponseMessageChangedToUser = handler;
         public void SetWsResponseCommandMessageHandler(Action<WsResponseCommandMessage>? handler)
             => _wsResponseCommandMessageChangedToUser = handler;
+        public void SetRawWireMessageHandler(Action<WsRawWireMessage>? handler)
+            => _rawWireMessageHandler = handler;
 
 
         internal WebSocketMessageHandler(ILogger logger, ILogger commandLogger, AlorOpenApiLogLevel logLevel, ConcurrentDictionary<string, Parameters> parameters, Action<WsResponseMessage>? wsResponseMessageChangedFromUser, Action<WsResponseCommandMessage>? wsResponseCommandMessageChangedToUser)
@@ -231,7 +234,7 @@ namespace Alor.OpenAPI.Managers
             _wsResponseMessageChangedToUser = wsResponseMessageChangedFromUser;
             _wsResponseCommandMessageChangedToUser = wsResponseCommandMessageChangedToUser;
 
-            _handlers = new KeyValuePair<ReadOnlyMemory<byte>, Action<(byte[] data, int len, DateTime timestamp)>>[]
+            _handlers = new KeyValuePair<ReadOnlyMemory<byte>, Action<(byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks)>>[]
             {
                 new(_subscriptionTypesDictionary["b0"], (msg) => ProcessMessage<WsOrderBookSimple, OrderbookSimple>(msg, _wsOrderBookSimpleChangedToUser)),
                 new(_subscriptionTypesDictionary["b1"], (msg) => ProcessMessage<WsOrderBookSlim, OrderbookSlim>(msg, _wsOrderBookSlimChangedToUser)),
@@ -274,10 +277,18 @@ namespace Alor.OpenAPI.Managers
         }
 
 
-        public void MessageReceived((byte[] data, int len, DateTime timestamp) byteMsg, string wsName)
+        public void MessageReceived((byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks) byteMsg, string wsName)
         {
             try
             {
+                _rawWireMessageHandler?.Invoke(
+                    new WsRawWireMessage(
+                        wsName,
+                        Encoding.UTF8.GetString(byteMsg.data.AsSpan(0, byteMsg.len)),
+                        byteMsg.timestamp,
+                        byteMsg.firstByteTimestampUtc,
+                        byteMsg.receiveTimestampTicks));
+
                 //Console.WriteLine(Encoding.UTF8.GetString(byteMsg.data.AsSpan(0, byteMsg.len)));
 
                 if (StartsWithPattern(byteMsg.data.AsSpan(0, byteMsg.len), _subscriptionTypesDictionary["requestGuid"]))
@@ -291,7 +302,11 @@ namespace Alor.OpenAPI.Managers
                     {
                         if (_wsResponseCommandMessageChangedToUser == null) return;
                         var obj = JsonSerializer.Generic.Utf8.Deserialize<WsResponseCommandMessage>(
-                            byteMsg.data.AsSpan(0, byteMsg.len)) with { SocketName = wsName };
+                            byteMsg.data.AsSpan(0, byteMsg.len)) with
+                            {
+                                SocketName = wsName,
+                                ReceiveTimestampTicks = byteMsg.receiveTimestampTicks
+                            };
                         _wsResponseCommandMessageChangedToUser(obj);
 
                         if (_logLevel == AlorOpenApiLogLevel.Verbose)
@@ -337,6 +352,7 @@ namespace Alor.OpenAPI.Managers
         {
             _wsResponseMessageChangedToUser = null;
             _wsResponseCommandMessageChangedToUser = null;
+            _rawWireMessageHandler = null;
             _wsOrderBookSimpleChangedToUser = null;
             _wsOrderBookSlimChangedToUser = null;
             _wsOrderBookHeavyChangedToUser = null;
@@ -375,7 +391,7 @@ namespace Alor.OpenAPI.Managers
             _wsStopOrderHeavyChangedToUser = null;
         }
 
-        private void ProcessMessage<T, TU>((byte[] data, int len, DateTime timestamp) byteMsg, Action<T>? handler) where T : class, IWsElement<TU>, new()
+        private void ProcessMessage<T, TU>((byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks) byteMsg, Action<T>? handler) where T : class, IWsElement<TU>, new()
             where TU : class
         {
             if (handler == null) return;
@@ -384,11 +400,12 @@ namespace Alor.OpenAPI.Managers
             if (obj?.Data == null) return;
 
             obj.ReceivedDateTimeUtc = byteMsg.timestamp;
+            obj.ReceiveTimestampTicks = byteMsg.receiveTimestampTicks;
             obj.Parameters = _parameters;
             handler(obj);
         }
 
-        private static ReadOnlyMemory<byte> FindSubscriptionTypeMarker((byte[] data, int len, DateTime timestamp) byteMsg, byte[] patternStart, byte[] patternEnd)
+        private static ReadOnlyMemory<byte> FindSubscriptionTypeMarker((byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks) byteMsg, byte[] patternStart, byte[] patternEnd)
         {
             var source = new ReadOnlyMemory<byte>(byteMsg.data, 0, byteMsg.len);
             var sourceSpan = source.Span;

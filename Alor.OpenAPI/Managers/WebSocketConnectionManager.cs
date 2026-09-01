@@ -18,18 +18,20 @@ namespace Alor.OpenAPI.Managers
         private readonly IWebSocketInfo _webSocketInfo;
 
         private readonly SemaphoreSlim _socketLifecycleSemaphore = new(1, 1);
+        private readonly SemaphoreSlim _sendSemaphore = new(1, 1);
         private Task? _socketStartingTask;
+        private long _pendingCwsCommandSends;
 
         private readonly AsyncPolicyWrap _policyWrap;
 
         private Action? _incrementSocketsCounter;
         private Action? _decrementSocketsCounter;
-        private Action<(byte[], int, DateTime), string>? _onMessageReceived;
+        private Action<(byte[], int, DateTime, DateTime, long), string>? _onMessageReceived;
 
         internal WebSocketConnectionManager(ILogger logger, Uri webSocketUri,
             string? jwtToken, IMetricsRegistry metricsRegistry, Action incrementSocketsCounter,
             Action decrementSocketsCounter, int socketId, string? name,
-            Action<(byte[], int, DateTime), string> onMessageReceived,
+            Action<(byte[], int, DateTime, DateTime, long), string> onMessageReceived,
             Dictionary<string, string>? webSocketHeaders = null)
         {
             ArgumentNullException.ThrowIfNull(logger);
@@ -121,24 +123,29 @@ namespace Alor.OpenAPI.Managers
 
         public WebSocketInfoDetails GetSocketInfoDetails() => new(_webSocketInfo.Name, _webSocketInfo.SentCount,
             _webSocketInfo.ReceivedCount, _webSocketInfo.LastUpdate, _webSocketInfo.ReconnectCount,
-            _webSocketInfo.ReceiveRate, Convert.ToDouble(_webSocketInfo.GetReaderCount()), _webSocketInfo.SentRate);
+            _webSocketInfo.ReceiveRate, Convert.ToDouble(_webSocketInfo.GetReaderCount()), _webSocketInfo.SentRate,
+            _webSocketInfo.IsConnected, _webSocketInfo.LastDisconnectUtc, _webSocketInfo.LastReconnectStartUtc,
+            _webSocketInfo.LastReconnectSuccessUtc, _webSocketInfo.LastDowntimeMs);
 
         public void CalculateWebSocketInfoRecieveRate() => _webSocketInfo.CalculateReceiveRate();
         public void CalculateWebSocketInfoSentRate() => _webSocketInfo.CalculateSentRate();
 
-        public async Task<bool> SendOrStartAndSendCws(string message)
+        public async Task<(DateTime sendTimestampUtc, long sendTimestampTicks)> SendOrStartAndSendCws(string message)
         {
+            Interlocked.Increment(ref _pendingCwsCommandSends);
             try
             {
-                await EnsureSocketStartedAsync();
-
-                await SendToSocket(_webSocketInfo, message);
-                return true;
+                await EnsureSocketStartedFastPathAsync().ConfigureAwait(false);
+                return await SendSingleMessageAsync(message).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 SendSocketStatus(AlorOpenApiLogLevel.Error, $"Ошибка при отправке сообщения: {ex.Message}");
-                return false;
+                return (default, 0L);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _pendingCwsCommandSends);
             }
         }
 
@@ -146,10 +153,10 @@ namespace Alor.OpenAPI.Managers
         {
             try
             {
-                await EnsureSocketStartedAsync();
-
+                await WaitForPendingCwsCommandsAsync().ConfigureAwait(false);
+                await EnsureSocketStartedFastPathAsync().ConfigureAwait(false);
                 var str = message.Replace("JwtToken", _jwtToken);
-                await SendToSocket(_webSocketInfo, str);
+                _ = await SendSingleMessageAsync(str).ConfigureAwait(false);
                 return true;
             }
             catch (Exception ex)
@@ -165,12 +172,20 @@ namespace Alor.OpenAPI.Managers
             {
                 if (messages.Count <= 0) return false;
 
-                await EnsureSocketStartedAsync();
-                
-                foreach (var msg in messages)
+                await WaitForPendingCwsCommandsAsync().ConfigureAwait(false);
+                await EnsureSocketStartedFastPathAsync().ConfigureAwait(false);
+                await _sendSemaphore.WaitAsync().ConfigureAwait(false);
+                try
                 {
-                    var str = msg.Replace("JwtToken", _jwtToken);
-                    await SendToSocket(_webSocketInfo, str);
+                    foreach (var msg in messages)
+                    {
+                        var str = msg.Replace("JwtToken", _jwtToken);
+                        _ = await SendToSocket(_webSocketInfo, str).ConfigureAwait(false);
+                    }
+                }
+                finally
+                {
+                    _sendSemaphore.Release();
                 }
 
                 return true;
@@ -182,22 +197,61 @@ namespace Alor.OpenAPI.Managers
             }
         }
 
-        private async Task SendToSocket(IWebSocketInfo ws, string msg)
+        private async Task<(DateTime sendTimestampUtc, long sendTimestampTicks)> SendToSocket(IWebSocketInfo ws, string msg)
         {
-            var sent = await ws.SendAsync(msg);
+            var sent = await ws.SendAsync(msg).ConfigureAwait(false);
             SendSocketStatus(AlorOpenApiLogLevel.Verbose, $"{ws.Name}: {msg}");
 
-            if (!sent)
+            if (!sent.sent)
             {
                 var errorMessage = $"{ws.Name}: Ошибка при отправке запроса: \"{msg}\"";
                 SendSocketStatus(AlorOpenApiLogLevel.Error, errorMessage);
                 throw new Exception(errorMessage);
             }
+
+            return (sent.sendTimestampUtc, sent.sendTimestampTicks);
+        }
+
+        private async Task<(DateTime sendTimestampUtc, long sendTimestampTicks)> SendSingleMessageAsync(string message)
+        {
+            await _sendSemaphore.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                return await SendToSocket(_webSocketInfo, message).ConfigureAwait(false);
+            }
+            finally
+            {
+                _sendSemaphore.Release();
+            }
+        }
+
+        private async Task EnsureSocketStartedFastPathAsync()
+        {
+            if (_webSocketInfo.IsConnected)
+            {
+                return;
+            }
+
+            await EnsureSocketStartedAsync().ConfigureAwait(false);
+        }
+
+        private async Task WaitForPendingCwsCommandsAsync()
+        {
+            const int maxPriorityWaitMs = 10;
+            for (var waitMs = 0; waitMs < maxPriorityWaitMs; waitMs++)
+            {
+                if (Volatile.Read(ref _pendingCwsCommandSends) <= 0)
+                {
+                    return;
+                }
+
+                await Task.Delay(1).ConfigureAwait(false);
+            }
         }
         
         private async Task EnsureSocketStartedAsync()
         {
-            await _socketLifecycleSemaphore.WaitAsync();
+            await _socketLifecycleSemaphore.WaitAsync().ConfigureAwait(false);
             try
             {
                 if (_webSocketInfo.IsConnected)
@@ -205,13 +259,13 @@ namespace Alor.OpenAPI.Managers
 
                 if (_socketStartingTask is { IsCompleted: false })
                 {
-                    await _socketStartingTask;
+                    await _socketStartingTask.ConfigureAwait(false);
                     return;
                 }
 
                 _socketStartingTask = StartSocket(_webSocketInfo);
                 
-                await _socketStartingTask;
+                await _socketStartingTask.ConfigureAwait(false);
             }
             finally
             {
@@ -227,6 +281,7 @@ namespace Alor.OpenAPI.Managers
             ws.Message += Websocket_MessageReceived;
 
             await ws.StartAsync();
+            MarkSocketConnected(ws, DateTime.UtcNow);
             _incrementSocketsCounter?.Invoke();
 
             if (!ws.Opcodes.IsEmpty)
@@ -249,6 +304,7 @@ namespace Alor.OpenAPI.Managers
             ws.Message += Websocket_MessageReceived;
 
             await ws.StartAsync();
+            MarkSocketConnected(ws, DateTime.UtcNow);
             _incrementSocketsCounter?.Invoke();
 
             return true;
@@ -270,6 +326,7 @@ namespace Alor.OpenAPI.Managers
 
             try
             {
+                ws.LastReconnectStartUtc = DateTime.UtcNow;
                 await _policyWrap.ExecuteAsync(async () =>
                 {
                     SendSocketStatus(AlorOpenApiLogLevel.Information, $"{ws.Name}: Перезапуск сокета");
@@ -288,6 +345,7 @@ namespace Alor.OpenAPI.Managers
 
         private Task Websocket_Closed(IWebSocketInfo ws)
         {
+            MarkSocketDisconnected(ws, DateTime.UtcNow);
             SendSocketStatus(AlorOpenApiLogLevel.Information, $"{ws.Name}: Отключились от сокета");
             _decrementSocketsCounter?.Invoke();
 
@@ -296,6 +354,7 @@ namespace Alor.OpenAPI.Managers
 
         private Task Websocket_Error(IWebSocketInfo ws, Exception e)
         {
+            MarkSocketDisconnected(ws, DateTime.UtcNow);
             SendSocketStatus(AlorOpenApiLogLevel.Error, $"{ws.Name}: Поймали еррор: {e.Message}");
 
             return Restart(ws);
@@ -307,7 +366,7 @@ namespace Alor.OpenAPI.Managers
             SendSocketStatus(AlorOpenApiLogLevel.Warning, $"{ws.Name}: Предупреждение: {msg}");
         }
 
-        private void Websocket_MessageReceived(IWebSocketInfo ws, (byte[] data, int len, DateTime timestamp) byteMsg)
+        private void Websocket_MessageReceived(IWebSocketInfo ws, (byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks) byteMsg)
         {
             try
             {
@@ -348,6 +407,22 @@ namespace Alor.OpenAPI.Managers
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(alorLogLevel), alorLogLevel, null);
+            }
+        }
+
+        private static void MarkSocketDisconnected(IWebSocketInfo ws, DateTime timestampUtc)
+        {
+            ws.LastDisconnectUtc = timestampUtc;
+            ws.LastDowntimeMs = null;
+        }
+
+        private static void MarkSocketConnected(IWebSocketInfo ws, DateTime timestampUtc)
+        {
+            ws.LastReconnectSuccessUtc = timestampUtc;
+            if (ws.LastDisconnectUtc.HasValue)
+            {
+                var downtimeMs = (long)Math.Max(0.0, (timestampUtc - ws.LastDisconnectUtc.Value).TotalMilliseconds);
+                ws.LastDowntimeMs = downtimeMs;
             }
         }
 
