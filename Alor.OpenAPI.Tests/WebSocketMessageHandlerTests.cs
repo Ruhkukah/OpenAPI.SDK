@@ -180,6 +180,29 @@ namespace Alor.OpenAPI.Tests
         }
 
         [Fact]
+        public void MessageReceived_Ignores_NonNumeric_StopOrder_ExchangeOrderId()
+        {
+            var loggerMock = new Mock<ILogger>();
+            var commandLoggerMock = new Mock<ILogger>();
+            var parameters = new ConcurrentDictionary<string, Parameters>();
+            var handler = new WebSocketMessageHandler(
+                loggerMock.Object, commandLoggerMock.Object,
+                Utilities.AlorOpenApiLogLevel.Fatal, parameters, null, null);
+            var message =
+                "{\"data\":{\"id\":\"121797196\",\"eid\":\"not-an-integer\",\"sym\":\"CNY-9.26\",\"p\":\"E101124\"},\"guid\":\"m1_1\"}"u8.ToArray();
+            WsParseFailure? parseFailure = null;
+            WsStopOrderSlim? received = null;
+            handler.SetWsParseFailureHandler(failure => parseFailure = failure);
+            handler.UpdateWsStopOrderSlimUserDelegate(value => received = value);
+
+            handler.MessageReceived((message, message.Length, DateTime.UtcNow, DateTime.UtcNow, 0L), "TestSocket");
+
+            Assert.Null(parseFailure);
+            Assert.NotNull(received);
+            Assert.Equal("121797196", received.Data?.Id);
+        }
+
+        [Fact]
         public void MessageReceived_Logs_Correctly()
         {
             // Arrange
