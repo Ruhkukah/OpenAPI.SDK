@@ -27,6 +27,22 @@ public interface IAlorOpenApiClient : IDisposable
     /// </summary>
     void SetWsResponseCommandMessageHandler(Action<WsResponseCommandMessage>? handler);
 
+    /// <summary>
+    /// Устанавливает обработчик сырых входящих WS/CWS сообщений до пользовательской десериализации.
+    /// </summary>
+    void SetRawWireMessageHandler(Action<WsRawWireMessage>? handler);
+
+    /// <summary>
+    /// Sets a handler for incoming WS messages that could not be deserialized.
+    /// The notification contains routing metadata, never the message payload.
+    /// </summary>
+    void SetWsParseFailureHandler(Action<WsParseFailure>? handler);
+
+    /// <summary>
+    /// Устанавливает обработчик сырых исходящих CWS-команд.
+    /// </summary>
+    void SetRawCwsCommandMessageHandler(Action<CwsRawCommandMessage>? handler);
+
     IWebSocketsPoolManager CreateWsPool(IReadOnlyList<string>? names = null, string? commandSocketName = null,
         int sockets = 1, AlorOpenApiLogLevel logLevel = AlorOpenApiLogLevel.Error, string? logFileNameSuffix = null);
 }

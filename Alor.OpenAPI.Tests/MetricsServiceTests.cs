@@ -187,8 +187,7 @@ namespace Alor.OpenAPI.Tests
             var metricsService = new MetricsService(loggerMock.Object, new Uri("https://example.com"), webSocketPoolManagers, true, cancellationTokenSource);
 
             var webSocketsPoolManagerMock = new Mock<IWebSocketsPoolManager>();
-            webSocketsPoolManagerMock.As<IInternalWebSocketsPoolManagerActions>()
-                .Setup(m => m.GetWebSocketsInfoDetail())
+            webSocketsPoolManagerMock.Setup(m => m.GetWebSocketsInfoDetail())
                 .Returns(new List<WebSocketInfoDetails>());
 
             webSocketPoolManagers.Add(webSocketsPoolManagerMock.Object);
@@ -206,7 +205,7 @@ namespace Alor.OpenAPI.Tests
             await cancellationTokenSource.CancelAsync();
 
             // Assert
-            webSocketsPoolManagerMock.As<IInternalWebSocketsPoolManagerActions>().Verify(m => m.GetWebSocketsInfoDetail(), Times.AtLeastOnce());
+            webSocketsPoolManagerMock.Verify(m => m.GetWebSocketsInfoDetail(), Times.AtLeastOnce());
         }
 
 

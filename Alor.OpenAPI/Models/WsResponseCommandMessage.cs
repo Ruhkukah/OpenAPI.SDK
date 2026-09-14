@@ -2,6 +2,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Runtime.Serialization;
 using System.Text;
+using System.Text.Json.Serialization;
 
 namespace Alor.OpenAPI.Models
 {
@@ -41,6 +42,10 @@ namespace Alor.OpenAPI.Models
         /// <include file='../XmlDocs/CoreModels.xml' path='Docs/Members[@name="wsCommands200Create"]/Member[@name="orderNumber"]/*' />
         [DataMember(Name = "orderNumber", EmitDefaultValue = false)]
         public string? OrderNumber { get; init; }
+
+        [IgnoreDataMember]
+        [JsonIgnore]
+        public long ReceiveTimestampTicks { get; init; }
 
         public override string ToString()
         {

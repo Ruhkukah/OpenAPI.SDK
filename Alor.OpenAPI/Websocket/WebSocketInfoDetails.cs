@@ -1,15 +1,49 @@
-﻿namespace Alor.OpenAPI.Websocket
+namespace Alor.OpenAPI.Websocket
 {
-    internal class WebSocketInfoDetails(string name, long sentCount, long receivedCount, DateTime? lastUpdate,
-        int reconnectCount, long receiveRate, double recieveBufferCount, long sentRate)
+    public sealed class WebSocketInfoDetails
     {
-        internal readonly string Name = name;
-        internal readonly long SentCount = sentCount;
-        internal readonly long ReceivedCount = receivedCount;
-        internal readonly DateTime? LastUpdate = lastUpdate;
-        internal readonly int ReconnectCount = reconnectCount;
-        internal readonly long SentRate = sentRate;
-        internal readonly long ReceiveRate = receiveRate;
-        internal readonly double RecieveBufferCount = recieveBufferCount;
+        public WebSocketInfoDetails(
+            string name,
+            long sentCount,
+            long receivedCount,
+            DateTime? lastUpdate,
+            int reconnectCount,
+            long receiveRate,
+            double recieveBufferCount,
+            long sentRate,
+            bool isConnected = false,
+            DateTime? lastDisconnectUtc = null,
+            DateTime? lastReconnectStartUtc = null,
+            DateTime? lastReconnectSuccessUtc = null,
+            long? lastDowntimeMs = null)
+        {
+            Name = name;
+            SentCount = sentCount;
+            ReceivedCount = receivedCount;
+            LastUpdate = lastUpdate;
+            ReconnectCount = reconnectCount;
+            ReceiveRate = receiveRate;
+            RecieveBufferCount = recieveBufferCount;
+            SentRate = sentRate;
+            IsConnected = isConnected;
+            LastDisconnectUtc = lastDisconnectUtc;
+            LastReconnectStartUtc = lastReconnectStartUtc;
+            LastReconnectSuccessUtc = lastReconnectSuccessUtc;
+            LastDowntimeMs = lastDowntimeMs;
+        }
+
+        public string Name { get; }
+        public long SentCount { get; }
+        public long ReceivedCount { get; }
+        public DateTime? LastUpdate { get; }
+        public int ReconnectCount { get; }
+        public long SentRate { get; }
+        public long ReceiveRate { get; }
+        public double RecieveBufferCount { get; }
+        public bool IsConnected { get; }
+        public DateTime? LastDisconnectUtc { get; }
+        public DateTime? LastReconnectStartUtc { get; }
+        public DateTime? LastReconnectSuccessUtc { get; }
+        public long? LastDowntimeMs { get; }
     }
 }

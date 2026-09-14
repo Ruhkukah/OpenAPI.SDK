@@ -266,5 +266,11 @@ namespace Alor.OpenAPI.Core
             => ((IInternalWebSocketsPoolManagerActions)WsPoolManager).SetWsResponseMessageHandler(handler);
         public void SetWsResponseCommandMessageHandler(Action<WsResponseCommandMessage>? handler)
             => ((IInternalWebSocketsPoolManagerActions)WsPoolManager).SetWsResponseCommandMessageHandler(handler);
+        public void SetRawWireMessageHandler(Action<WsRawWireMessage>? handler)
+            => ((IInternalWebSocketsPoolManagerActions)WsPoolManager).SetRawWireMessageHandler(handler);
+        public void SetWsParseFailureHandler(Action<WsParseFailure>? handler)
+            => ((IInternalWebSocketsPoolManagerActions)WsPoolManager).SetWsParseFailureHandler(handler);
+        public void SetRawCwsCommandMessageHandler(Action<CwsRawCommandMessage>? handler)
+            => ((IInternalWebSocketsPoolManagerActions)WsPoolManager).SetRawCwsCommandMessageHandler(handler);
     }
 }

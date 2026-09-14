@@ -138,25 +138,37 @@ namespace Alor.OpenAPI.Managers
         public Task<Dictionary<string, string>> OrderBookGetAndSubscribeSimpleAsync(
             Action<WsOrderBookSimple> orderBookChanged,
             IEnumerable<string?> tickersList,
-            Exchange exchange, int depth = 20, string? instrumentGroup = null)
+            Exchange exchange, int depth = 50, string? instrumentGroup = null)
         {
             ArgumentNullException.ThrowIfNull(orderBookChanged);
             ArgumentNullException.ThrowIfNull(tickersList);
 
             UpdateWsMessageHandlerWsOrderBookSimpleDelegat?.Invoke(orderBookChanged);
-            return OrderBookGetAndSubscribeAsync(Format.Simple, tickersList, exchange, depth, instrumentGroup);
+            return OrderBookGetAndSubscribeAsync(Format.Simple, tickersList, exchange, depth, instrumentGroup, null);
+        }
+
+        public Task<Dictionary<string, string>> OrderBookGetAndSubscribeSimpleAsync(
+            Action<WsOrderBookSimple> orderBookChanged,
+            IEnumerable<string?> tickersList,
+            Exchange exchange, int depth, string? instrumentGroup = null, int? frequency = null)
+        {
+            ArgumentNullException.ThrowIfNull(orderBookChanged);
+            ArgumentNullException.ThrowIfNull(tickersList);
+
+            UpdateWsMessageHandlerWsOrderBookSimpleDelegat?.Invoke(orderBookChanged);
+            return OrderBookGetAndSubscribeAsync(Format.Simple, tickersList, exchange, depth, instrumentGroup, frequency);
         }
 
         public Task<Dictionary<string, string>> OrderBookGetAndSubscribeSlimAsync(
             Action<WsOrderBookSlim> orderBookChanged,
             IEnumerable<string?> tickersList,
-            Exchange exchange, int depth = 20, string? instrumentGroup = null)
+            Exchange exchange, int depth = 20, string? instrumentGroup = null, int? frequency = null)
         {
             ArgumentNullException.ThrowIfNull(orderBookChanged);
             ArgumentNullException.ThrowIfNull(tickersList);
 
             UpdateWsMessageHandlerWsOrderBookSlimDelegat?.Invoke(orderBookChanged);
-            return OrderBookGetAndSubscribeAsync(Format.Slim, tickersList, exchange, depth, instrumentGroup);
+            return OrderBookGetAndSubscribeAsync(Format.Slim, tickersList, exchange, depth, instrumentGroup, frequency);
         }
 
         public Task<Dictionary<string, string>> OrderBookGetAndSubscribeHeavyAsync(
@@ -168,7 +180,19 @@ namespace Alor.OpenAPI.Managers
             ArgumentNullException.ThrowIfNull(tickersList);
 
             UpdateWsMessageHandlerWsOrderBookHeavyDelegat?.Invoke(orderBookChanged);
-            return OrderBookGetAndSubscribeAsync(Format.Heavy, tickersList, exchange, depth, instrumentGroup);
+            return OrderBookGetAndSubscribeAsync(Format.Heavy, tickersList, exchange, depth, instrumentGroup, null);
+        }
+
+        public Task<Dictionary<string, string>> OrderBookGetAndSubscribeHeavyAsync(
+            Action<WsOrderBookHeavy> orderBookChanged,
+            IEnumerable<string?> tickersList,
+            Exchange exchange, int depth, string? instrumentGroup = null, int? frequency = null)
+        {
+            ArgumentNullException.ThrowIfNull(orderBookChanged);
+            ArgumentNullException.ThrowIfNull(tickersList);
+
+            UpdateWsMessageHandlerWsOrderBookHeavyDelegat?.Invoke(orderBookChanged);
+            return OrderBookGetAndSubscribeAsync(Format.Heavy, tickersList, exchange, depth, instrumentGroup, frequency);
         }
 
         public Task<Dictionary<string, string>> BarsGetAndSubscribeSimpleAsync(Action<WsCandleSimple> candleChanged,
@@ -491,7 +515,7 @@ namespace Alor.OpenAPI.Managers
         #region Subscriptions Methods
         private async Task<Dictionary<string, string>> OrderBookGetAndSubscribeAsync(Format format,
             IEnumerable<string?> tickersList,
-            Exchange exchange, int depth, string? instrumentGroup)
+            Exchange exchange, int depth, string? instrumentGroup, int? frequency)
         {
             if (depth > 50) depth = 50;
             var msgDic = new Dictionary<string, string>();
@@ -511,7 +535,7 @@ namespace Alor.OpenAPI.Managers
                                               Exchange = exchange,
                                               InstrumentGroup = instrumentGroup,
                                           });
-                var message = new SubscriptionOrderBook(ticker, depth, exchange, instrumentGroup, format, 0, guid).ToJson();
+                var message = new SubscriptionOrderBook(ticker, depth, exchange, instrumentGroup, format, frequency, guid).ToJson();
                 msgDic.Add(guid, message);
                 guidToTickerDic.Add(guid, ticker);
             }
@@ -520,6 +544,8 @@ namespace Alor.OpenAPI.Managers
 
             return guidToTickerDic;
         }
+
+
 
         private async Task<Dictionary<string, string>> BarsGetAndSubscribeAsync(Format format,
             IEnumerable<string?> tickersList,
@@ -617,6 +643,8 @@ namespace Alor.OpenAPI.Managers
 
             return guidToTickerDic;
         }
+
+
 
         private async Task<string> PositionsGetAndSubscribeV2Async(Format format,
             Exchange exchange, string? portfolio, bool skipHistory)

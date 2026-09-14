@@ -12,8 +12,8 @@ namespace Alor.OpenAPI.Tests
         public void EnsureInitialized_CallsAuthorizationOnlyOnce()
         {
             // Arrange
-            var commandMsgUpdateMock = new Mock<Func<string, Task<bool>>>();
-            commandMsgUpdateMock.Setup(f => f.Invoke(It.IsAny<string>())).ReturnsAsync(true);
+            var commandMsgUpdateMock = new Mock<Func<string, Task<(DateTime, long)>>>();
+            commandMsgUpdateMock.Setup(f => f.Invoke(It.IsAny<string>())).ReturnsAsync((DateTime.UtcNow, 0L));
 
             var mockAuthFunc = new Mock<Func<Task>>();
             mockAuthFunc.Setup(m => m.Invoke()).Returns(Task.CompletedTask);
@@ -38,8 +38,8 @@ namespace Alor.OpenAPI.Tests
         public async Task CreateMarketOrderAsync_SendsCorrectMessageAndReturnsGuid()
         {
             // Arrange
-            var commandMsgUpdateMock = new Mock<Func<string, Task<bool>>>();
-            commandMsgUpdateMock.Setup(f => f.Invoke(It.IsAny<string>())).ReturnsAsync(true);
+            var commandMsgUpdateMock = new Mock<Func<string, Task<(DateTime, long)>>>();
+            commandMsgUpdateMock.Setup(f => f.Invoke(It.IsAny<string>())).ReturnsAsync((DateTime.UtcNow, 0L));
 
             var mockAuthFunc = new Mock<Func<Task>>();
             mockAuthFunc.Setup(m => m.Invoke()).Returns(Task.CompletedTask);
@@ -73,8 +73,8 @@ namespace Alor.OpenAPI.Tests
         [Fact]
         public async Task GuidsAreUniqueForDifferentRequests()
         {
-            var commandMock = new Mock<Func<string, Task<bool>>>();
-            commandMock.Setup(cmd => cmd(It.IsAny<string>())).ReturnsAsync(true);
+            var commandMock = new Mock<Func<string, Task<(DateTime, long)>>>();
+            commandMock.Setup(cmd => cmd(It.IsAny<string>())).ReturnsAsync((DateTime.UtcNow, 0L));
 
             var refreshMock = new Mock<Func<Task>>();
             refreshMock.Setup(r => r()).Returns(Task.CompletedTask);
@@ -92,7 +92,7 @@ namespace Alor.OpenAPI.Tests
         [Fact]
         public async Task HandlesErrorsDuringCommandUpdate()
         {
-            var commandMock = new Mock<Func<string, Task<bool>>>();
+            var commandMock = new Mock<Func<string, Task<(DateTime, long)>>>();
             commandMock.Setup(cmd => cmd(It.IsAny<string>())).ThrowsAsync(new InvalidOperationException("Command failed"));
 
             var refreshMock = new Mock<Func<Task>>();
@@ -109,8 +109,8 @@ namespace Alor.OpenAPI.Tests
         public async Task ConcurrentCallsMaintainConsistentState()
         {
             // Arrange
-            var commandMock = new Mock<Func<string, Task<bool>>>();
-            commandMock.Setup(cmd => cmd(It.IsAny<string>())).ReturnsAsync(true);
+            var commandMock = new Mock<Func<string, Task<(DateTime, long)>>>();
+            commandMock.Setup(cmd => cmd(It.IsAny<string>())).ReturnsAsync((DateTime.UtcNow, 0L));
 
             var refreshMock = new Mock<Func<Task>>();
             refreshMock.Setup(r => r()).Returns(Task.CompletedTask);
@@ -137,8 +137,8 @@ namespace Alor.OpenAPI.Tests
         public void Dispose_ClearsAllResources()
         {
             // Arrange
-            var commandMock = new Mock<Func<string, Task<bool>>>();
-            commandMock.Setup(cmd => cmd(It.IsAny<string>())).ReturnsAsync(true);
+            var commandMock = new Mock<Func<string, Task<(DateTime, long)>>>();
+            commandMock.Setup(cmd => cmd(It.IsAny<string>())).ReturnsAsync((DateTime.UtcNow, 0L));
 
             var refreshMock = new Mock<Func<Task>>();
             refreshMock.Setup(r => r()).Returns(Task.CompletedTask);

@@ -116,7 +116,7 @@ namespace Alor.OpenAPI.Services
                     if (_metricsRegistry.CurrentStatusMetricsCollection)
                     {
                         foreach (var webSocketDetail in _webSocketPoolManagers.SelectMany(webSocketsPoolManager =>
-                                     ((IInternalWebSocketsPoolManagerActions)webSocketsPoolManager).GetWebSocketsInfoDetail()))
+                                     webSocketsPoolManager.GetWebSocketsInfoDetail()))
                         {
                             _metricsRegistry.UpdateGauge($"gaugeOption{webSocketDetail.Name}SentCount",
                                 webSocketDetail.SentCount);

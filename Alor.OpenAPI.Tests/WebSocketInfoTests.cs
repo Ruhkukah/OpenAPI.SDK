@@ -57,7 +57,7 @@ namespace Alor.OpenAPI.Tests
             var result = await webSocketInfo.SendAsync("Test message");
 
             // Assert
-            Assert.True(result, "SendAsync should return true when WebSocket is connected.");
+            Assert.True(result.sent, "SendAsync should return true when WebSocket is connected.");
             Assert.Equal(1, webSocketInfo.SentCount);
             webSocketClientMock.Verify(ws => ws.SendAsync(
                 It.IsAny<ArraySegment<byte>>(),
@@ -116,6 +116,42 @@ namespace Alor.OpenAPI.Tests
             // Assert
             Assert.Equal(1, webSocketInfo.ReceivedCount); // Проверяем, что счётчик полученных сообщений инкрементировался
 
+            webSocketInfo.Dispose();
+        }
+
+        [Fact]
+        public async Task ConcurrentLoopTerminationRaisesOneLifecycleCallback()
+        {
+            var webSocketClientMock = new Mock<IWebSocketClient>();
+            webSocketClientMock.Setup(ws => ws.CloseAsync(
+                    It.IsAny<WebSocketCloseStatus>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+            var webSocketInfo = new WebSocketInfo(1, "TestSocket", () => webSocketClientMock.Object);
+            var errors = 0;
+            var closes = 0;
+            webSocketInfo.Error = (_, _) =>
+            {
+                Interlocked.Increment(ref errors);
+                return Task.CompletedTask;
+            };
+            webSocketInfo.Closed = _ =>
+            {
+                Interlocked.Increment(ref closes);
+                return Task.CompletedTask;
+            };
+            var finisher = typeof(WebSocketInfo).GetMethod(
+                "Finisher", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            using var cts = new CancellationTokenSource();
+            var failure = Task.FromException(new InvalidOperationException("remote close"));
+
+            var first = (Task)finisher.Invoke(webSocketInfo, [failure, cts, webSocketClientMock.Object])!;
+            var second = (Task)finisher.Invoke(webSocketInfo, [failure, cts, webSocketClientMock.Object])!;
+            await Task.WhenAll(first, second);
+
+            Assert.Equal(1, errors);
+            Assert.Equal(0, closes);
+            webSocketClientMock.Verify(ws => ws.CloseAsync(
+                WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None), Times.Once());
             webSocketInfo.Dispose();
         }
 

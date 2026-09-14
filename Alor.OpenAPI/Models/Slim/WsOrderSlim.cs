@@ -38,6 +38,18 @@ namespace Alor.OpenAPI.Models.Slim
 
         [IgnoreDataMember]
         [JsonIgnore]
+        public long ReceiveTimestampTicks { get; internal set; }
+
+        [IgnoreDataMember]
+        [JsonIgnore]
+        long IWsElement.ReceiveTimestampTicks
+        {
+            get => ReceiveTimestampTicks;
+            set => ReceiveTimestampTicks = value;
+        }
+
+        [IgnoreDataMember]
+        [JsonIgnore]
         ConcurrentDictionary<string, Parameters>? IWsElement.Parameters { get; set; }
 
         public override string ToString()

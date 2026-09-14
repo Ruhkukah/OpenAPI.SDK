@@ -2,6 +2,8 @@
 {
     internal interface ICwsAuthService : IDisposable
     {
+        DateTime? AuthorizedUntilUtc { get; }
+        string? LastRefreshError { get; }
         Task CwsAuthorizeAndSetRefreshTimer();
     }
 }

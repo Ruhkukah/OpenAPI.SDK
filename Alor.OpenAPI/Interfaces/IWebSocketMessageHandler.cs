@@ -44,9 +44,11 @@ namespace Alor.OpenAPI.Interfaces
         public void UpdateWsStopOrderSlimUserDelegate(Action<WsStopOrderSlim>? wsStopOrderChangedFromUser);
         public void UpdateWsStopOrderHeavyUserDelegate(Action<WsStopOrderHeavy>? wsStopOrderChangedFromUser);
 
-        void MessageReceived((byte[] data, int len, DateTime timestamp) byteMsg, string socketName);
+        void MessageReceived((byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks) byteMsg, string socketName);
 
         void SetWsResponseMessageHandler(Action<WsResponseMessage>? handler);
         void SetWsResponseCommandMessageHandler(Action<WsResponseCommandMessage>? handler);
+        void SetRawWireMessageHandler(Action<WsRawWireMessage>? handler);
+        void SetWsParseFailureHandler(Action<WsParseFailure>? handler);
     }
 }

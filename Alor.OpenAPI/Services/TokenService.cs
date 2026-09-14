@@ -99,7 +99,8 @@ namespace Alor.OpenAPI.Services
 
             accessToken = accessTokenElement.GetString();
 
-            _logger.Verbose($"AccessToken: {accessToken}");
+            // Never write bearer credentials to logs, even at Verbose level.
+            _logger.Verbose("Access token refreshed successfully.");
             return accessToken;
         }
 
