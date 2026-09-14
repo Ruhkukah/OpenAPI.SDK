@@ -65,7 +65,10 @@ namespace Alor.OpenAPI.Models.Slim
         public string? Id { get; init; }
 
         /// <include file='../../XmlDocs/CoreModels.xml' path='Docs/Members[@name="responseStopOrderWarp"]/Member[@name="exchangeOrderId"]/*' />
-        [DataMember(Name = "eid", EmitDefaultValue = false)]
+        // The broker has emitted non-integer values for this optional field.
+        // Slim stop consumers do not use it, so ignore it rather than dropping
+        // an otherwise valid stop-order update.
+        [IgnoreDataMember]
         public long? ExchangeOrderId { get; init; }
 
         /// <include file='../../XmlDocs/CoreModels.xml' path='Docs/Members[@name="responseStopOrderWarp"]/Member[@name="symbol"]/*' />
