@@ -33,4 +33,19 @@ public class AlorOpenApiClientHolderTests
         holder.Dispose();
         mock.Verify(x => x.Dispose(), Times.Once);
     }
+
+    [Fact]
+    public void Parse_Failure_Handler_Can_Be_Registered_Before_Client_Initialization()
+    {
+        var mock = new Mock<IAlorOpenApiClient>();
+        var holder = new AlorOpenApiClientHolder();
+        Action<WsParseFailure> handler = _ => { };
+
+        holder.SetWsParseFailureHandler(handler);
+        mock.Verify(x => x.SetWsParseFailureHandler(It.IsAny<Action<WsParseFailure>>()), Times.Never);
+
+        holder.SetClient(mock.Object);
+
+        mock.Verify(x => x.SetWsParseFailureHandler(handler), Times.Once);
+    }
 }
