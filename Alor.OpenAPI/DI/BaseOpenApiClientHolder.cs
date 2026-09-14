@@ -7,7 +7,15 @@ namespace Alor.OpenAPI.DI;
 public abstract class BaseOpenApiClientHolder : IAlorOpenApiClient
 {
     private IAlorOpenApiClient? _client;
-    public void SetClient(IAlorOpenApiClient client) => _client = client ?? throw new ArgumentNullException(nameof(client));
+    private Action<WsParseFailure>? _wsParseFailureHandler;
+    private bool _wsParseFailureHandlerConfigured;
+
+    public void SetClient(IAlorOpenApiClient client)
+    {
+        _client = client ?? throw new ArgumentNullException(nameof(client));
+        if (_wsParseFailureHandlerConfigured)
+            _client.SetWsParseFailureHandler(_wsParseFailureHandler);
+    }
     protected IAlorOpenApiClient Client => _client ?? throw new InvalidOperationException("OpenApiClient is not initialized yet");
 
     public IWebSocketsPoolManager WsPoolManager => Client.WsPoolManager;
@@ -28,7 +36,11 @@ public abstract class BaseOpenApiClientHolder : IAlorOpenApiClient
     public void SetRawWireMessageHandler(Action<WsRawWireMessage>? handler)
         => Client.SetRawWireMessageHandler(handler);
     public void SetWsParseFailureHandler(Action<WsParseFailure>? handler)
-        => Client.SetWsParseFailureHandler(handler);
+    {
+        _wsParseFailureHandler = handler;
+        _wsParseFailureHandlerConfigured = true;
+        _client?.SetWsParseFailureHandler(handler);
+    }
     public void SetRawCwsCommandMessageHandler(Action<CwsRawCommandMessage>? handler)
         => Client.SetRawCwsCommandMessageHandler(handler);
 
