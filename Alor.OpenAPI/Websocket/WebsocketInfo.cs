@@ -55,7 +55,7 @@ namespace Alor.OpenAPI.Websocket
         private Task _listener = Task.CompletedTask;
         private Task _multiplexer = Task.CompletedTask;
 
-        private bool _isClosing = false;
+        private int _closeStarted;
 
         public int? GetReaderCount() => _bucket?.Reader.Count;
 
@@ -73,6 +73,7 @@ namespace Alor.OpenAPI.Websocket
 
         public async Task StartAsync()
         {
+            Volatile.Write(ref _closeStarted, 0);
             _webSocketClient = webSocketClientFactory();
 
             var ws = _webSocketClient;
@@ -90,8 +91,8 @@ namespace Alor.OpenAPI.Websocket
 
             _multiplexer = StartMultiplexerLoop(_bucket);
             _listener = StartListenerLoop();
-            _ = _multiplexer.ContinueWith(l => Finisher(l, cts, ws), cts.Token);
-            _ = _listener.ContinueWith(l => Finisher(l, cts, ws), cts.Token);
+            _ = _multiplexer.ContinueWith(l => Finisher(l, cts, ws), CancellationToken.None);
+            _ = _listener.ContinueWith(l => Finisher(l, cts, ws), CancellationToken.None);
         }
 
         private async Task Finisher(Task prev, CancellationTokenSource cts, IWebSocketClient ws)
@@ -223,22 +224,19 @@ namespace Alor.OpenAPI.Websocket
 
         private async Task CloseAsync(CancellationTokenSource cts, IWebSocketClient? ws, Exception? error = null)
         {
-            if (_isClosing)
-                return;
-            _isClosing = true;
-
-            if (cts.IsCancellationRequested)
+            if (Interlocked.CompareExchange(ref _closeStarted, 1, 0) != 0)
                 return;
 
             try
             {
-                await cts.CancelAsync();
+                if (!cts.IsCancellationRequested)
+                    await cts.CancelAsync();
                 await _multiplexer;
                 await _listener;
             }
             catch (Exception ex)
             {
-                SendSocketStatus?.Invoke(AlorOpenApiLogLevel.Error, $"Ошибка при закрытии задач: {ex.Message}\n{ex.StackTrace}");
+                SendSocketStatus?.Invoke(AlorOpenApiLogLevel.Debug, $"Ошибка при закрытии задач: {ex.Message}");
             }
             finally
             {
@@ -266,7 +264,6 @@ namespace Alor.OpenAPI.Websocket
             else
                 await (Closed?.Invoke(this) ?? Task.CompletedTask);
 
-            _isClosing = false;
         }
 
         public Task CloseSocketAndResetCounters()

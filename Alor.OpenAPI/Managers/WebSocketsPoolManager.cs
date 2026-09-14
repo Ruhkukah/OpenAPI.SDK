@@ -221,6 +221,9 @@ namespace Alor.OpenAPI.Managers
         public void SetRawWireMessageHandler(Action<WsRawWireMessage>? handler)
             => _webSocketMessageHandler.SetRawWireMessageHandler(handler);
 
+        public void SetWsParseFailureHandler(Action<WsParseFailure>? handler)
+            => _webSocketMessageHandler.SetWsParseFailureHandler(handler);
+
         public void SetRawCwsCommandMessageHandler(Action<CwsRawCommandMessage>? handler)
             => CommandWs.SetRawCommandMessageHandler(handler);
 

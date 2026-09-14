@@ -325,7 +325,8 @@ namespace Alor.OpenAPI.Tests
             var messageBytes = Encoding.UTF8.GetBytes(testJsonMessage);
 
             // Act
-            webSocketMessageHandler.MessageReceived((messageBytes, messageBytes.Length, DateTime.UtcNow), "TestSocket");
+            webSocketMessageHandler.MessageReceived(
+                (messageBytes, messageBytes.Length, DateTime.UtcNow, DateTime.UtcNow, 0L), "TestSocket");
 
             // Assert
             wsResponseMessageChangedMock.Verify(handler => handler(It.Is<WsResponseMessage>(msg =>
@@ -375,7 +376,8 @@ namespace Alor.OpenAPI.Tests
             var messageBytes = Encoding.UTF8.GetBytes(testJsonMessage);
 
             // Act
-            webSocketMessageHandler.MessageReceived((messageBytes, messageBytes.Length, DateTime.UtcNow), "TestSocket");
+            webSocketMessageHandler.MessageReceived(
+                (messageBytes, messageBytes.Length, DateTime.UtcNow, DateTime.UtcNow, 0L), "TestSocket");
 
             // Assert
             wsResponseCommandMessageChangedMock.Verify(handler => handler(It.Is<WsResponseCommandMessage>(msg =>
@@ -392,8 +394,8 @@ namespace Alor.OpenAPI.Tests
             var metricsRegistryMock = new Mock<IMetricsRegistry>();
             metricsRegistryMock.Setup(x => x.MetricsOptions).Returns(new ConcurrentDictionary<string, object>());
 
-            var commandMsgUpdateMock = new Mock<Func<string, Task<bool>>>();
-            commandMsgUpdateMock.Setup(f => f(It.IsAny<string>())).Returns(Task.FromResult(true));
+            var commandMsgUpdateMock = new Mock<Func<string, Task<(DateTime, long)>>>();
+            commandMsgUpdateMock.Setup(f => f(It.IsAny<string>())).ReturnsAsync((DateTime.UtcNow, 0L));
 
             var cwsAuthorizeAndSetRefreshTimerMock = new Mock<Func<Task>>();
             cwsAuthorizeAndSetRefreshTimerMock.Setup(f => f()).Returns(Task.CompletedTask);

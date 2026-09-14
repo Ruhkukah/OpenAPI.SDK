@@ -22,6 +22,7 @@ namespace Alor.OpenAPI.Managers
         private Action<WsResponseMessage>? _wsResponseMessageChangedToUser;
         private Action<WsResponseCommandMessage>? _wsResponseCommandMessageChangedToUser;
         private Action<WsRawWireMessage>? _rawWireMessageHandler;
+        private Action<WsParseFailure>? _wsParseFailureHandler;
         private Action<WsOrderBookSimple>? _wsOrderBookSimpleChangedToUser;
         private Action<WsOrderBookSlim>? _wsOrderBookSlimChangedToUser;
         private Action<WsOrderBookHeavy>? _wsOrderBookHeavyChangedToUser;
@@ -223,6 +224,8 @@ namespace Alor.OpenAPI.Managers
             => _wsResponseCommandMessageChangedToUser = handler;
         public void SetRawWireMessageHandler(Action<WsRawWireMessage>? handler)
             => _rawWireMessageHandler = handler;
+        public void SetWsParseFailureHandler(Action<WsParseFailure>? handler)
+            => _wsParseFailureHandler = handler;
 
 
         internal WebSocketMessageHandler(ILogger logger, ILogger commandLogger, AlorOpenApiLogLevel logLevel, ConcurrentDictionary<string, Parameters> parameters, Action<WsResponseMessage>? wsResponseMessageChangedFromUser, Action<WsResponseCommandMessage>? wsResponseCommandMessageChangedToUser)
@@ -344,7 +347,18 @@ namespace Alor.OpenAPI.Managers
             }
             catch (Exception ex)
             {
-                _logger.Error(ex.Message);
+                var marker = FindSubscriptionMarker(byteMsg);
+                _logger.Error(ex,
+                    "Failed to parse websocket message from {SocketName}; marker={SubscriptionMarker}; length={PayloadLength}",
+                    wsName, marker, byteMsg.len);
+                _wsParseFailureHandler?.Invoke(new WsParseFailure(
+                    wsName,
+                    marker,
+                    byteMsg.len,
+                    ex.GetType().Name,
+                    ex.Message,
+                    byteMsg.timestamp,
+                    byteMsg.receiveTimestampTicks));
             }
         }
 
@@ -353,6 +367,7 @@ namespace Alor.OpenAPI.Managers
             _wsResponseMessageChangedToUser = null;
             _wsResponseCommandMessageChangedToUser = null;
             _rawWireMessageHandler = null;
+            _wsParseFailureHandler = null;
             _wsOrderBookSimpleChangedToUser = null;
             _wsOrderBookSlimChangedToUser = null;
             _wsOrderBookHeavyChangedToUser = null;
@@ -449,6 +464,16 @@ namespace Alor.OpenAPI.Managers
             }
 
             return start != -1 && end != -1 ? source[start..end] : ReadOnlyMemory<byte>.Empty;
+        }
+
+        private string FindSubscriptionMarker((byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks) byteMsg)
+        {
+            var marker = FindSubscriptionTypeMarker(
+                byteMsg, _subscriptionTypesDictionary["guid"], _subscriptionTypesDictionary["_"]);
+            if (marker.IsEmpty)
+                marker = FindSubscriptionTypeMarker(
+                    byteMsg, _subscriptionTypesDictionary["requestGuid"], _subscriptionTypesDictionary["_"]);
+            return marker.IsEmpty ? string.Empty : Encoding.UTF8.GetString(marker.Span);
         }
 
         private static bool StartsWithPattern(Span<byte> sourceArray, byte[]? patternArray)

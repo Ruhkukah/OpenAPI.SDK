@@ -9,4 +9,14 @@ namespace Alor.OpenAPI.Models
         DateTime TimestampUtc,
         DateTime FirstByteTimestampUtc,
         long ReceiveTimestampTicks);
+
+    [DataContract]
+    public sealed record WsParseFailure(
+        string SocketName,
+        string SubscriptionMarker,
+        int PayloadLength,
+        string ExceptionType,
+        string Error,
+        DateTime TimestampUtc,
+        long ReceiveTimestampTicks);
 }

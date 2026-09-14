@@ -27,6 +27,8 @@ public abstract class BaseOpenApiClientHolder : IAlorOpenApiClient
         => Client.SetWsResponseCommandMessageHandler(handler);
     public void SetRawWireMessageHandler(Action<WsRawWireMessage>? handler)
         => Client.SetRawWireMessageHandler(handler);
+    public void SetWsParseFailureHandler(Action<WsParseFailure>? handler)
+        => Client.SetWsParseFailureHandler(handler);
     public void SetRawCwsCommandMessageHandler(Action<CwsRawCommandMessage>? handler)
         => Client.SetRawCwsCommandMessageHandler(handler);
 

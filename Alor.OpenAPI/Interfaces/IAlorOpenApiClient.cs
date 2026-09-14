@@ -33,6 +33,12 @@ public interface IAlorOpenApiClient : IDisposable
     void SetRawWireMessageHandler(Action<WsRawWireMessage>? handler);
 
     /// <summary>
+    /// Sets a handler for incoming WS messages that could not be deserialized.
+    /// The notification contains routing metadata, never the message payload.
+    /// </summary>
+    void SetWsParseFailureHandler(Action<WsParseFailure>? handler);
+
+    /// <summary>
     /// Устанавливает обработчик сырых исходящих CWS-команд.
     /// </summary>
     void SetRawCwsCommandMessageHandler(Action<CwsRawCommandMessage>? handler);

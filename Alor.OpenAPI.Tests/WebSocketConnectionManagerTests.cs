@@ -22,7 +22,7 @@ namespace Alor.OpenAPI.Tests
             var jwtToken = "testToken";
             var incrementCounter = new Action(() => { });
             var decrementCounter = new Action(() => { });
-            var onMessageReceived = new Action<(byte[], int, DateTime), string>((data, name) => { });
+            var onMessageReceived = new Action<(byte[], int, DateTime, DateTime, long), string>((data, name) => { });
 
             // Act
             var manager = new WebSocketConnectionManager(loggerMock.Object, uri, jwtToken, metricsRegistryMock.Object,
@@ -43,7 +43,7 @@ namespace Alor.OpenAPI.Tests
             var jwtToken = "testToken";
             var incrementCounter = new Action(() => { });
             var decrementCounter = new Action(() => { });
-            var onMessageReceived = new Action<(byte[], int, DateTime), string>((data, name) => { });
+            var onMessageReceived = new Action<(byte[], int, DateTime, DateTime, long), string>((data, name) => { });
 
             // Act and Assert
             // Проверка на null URI
@@ -88,7 +88,7 @@ namespace Alor.OpenAPI.Tests
             var receivedData = Array.Empty<byte>();
             var receivedName = string.Empty;
 
-            void OnMessageReceived((byte[] data, int len, DateTime timestamp) message, string name)
+            void OnMessageReceived((byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks) message, string name)
             {
                 messageReceived = true;
                 receivedData = message.data;
@@ -97,7 +97,8 @@ namespace Alor.OpenAPI.Tests
 
             var webSocketInfoMock = new Mock<IWebSocketInfo>();
             webSocketInfoMock.Setup(ws => ws.Name).Returns("TestSocket");
-            webSocketInfoMock.Setup(ws => ws.SendAsync(It.IsAny<string>())).Returns(Task.FromResult(true));
+            webSocketInfoMock.Setup(ws => ws.SendAsync(It.IsAny<string>()))
+                .ReturnsAsync((true, DateTime.UtcNow, 0L));
 
             // Инициализация WebSocketConnectionManager с подменой _webSocketInfo
             var manager = new WebSocketConnectionManager(loggerMock.Object, uri, jwtToken, metricsRegistryMock.Object,
@@ -116,7 +117,8 @@ namespace Alor.OpenAPI.Tests
             await manager.SendOrStartAndSend(Encoding.UTF8.GetString(fakeMessage));
 
 #pragma warning disable PH_S019 // Blocking Method in Async Method
-            webSocketInfoMock.Raise(ws => ws.Message += null, webSocketInfoMock.Object, (fakeMessage, messageLength, DateTime.UtcNow));
+            webSocketInfoMock.Raise(ws => ws.Message += null, webSocketInfoMock.Object,
+                (fakeMessage, messageLength, DateTime.UtcNow, DateTime.UtcNow, 0L));
 #pragma warning restore PH_S019 // Blocking Method in Async Method
 
             // Assert
@@ -143,7 +145,7 @@ namespace Alor.OpenAPI.Tests
             {
             }
 
-            void OnMessageReceived((byte[], int, DateTime) data, string name)
+            void OnMessageReceived((byte[], int, DateTime, DateTime, long) data, string name)
             {
             }
 
@@ -180,7 +182,7 @@ namespace Alor.OpenAPI.Tests
             {
             }
 
-            void OnMessageReceived((byte[], int, DateTime) data, string name)
+            void OnMessageReceived((byte[], int, DateTime, DateTime, long) data, string name)
             {
             }
 
@@ -214,13 +216,14 @@ namespace Alor.OpenAPI.Tests
             {
             }
 
-            void OnMessageReceived((byte[], int, DateTime) data, string name)
+            void OnMessageReceived((byte[], int, DateTime, DateTime, long) data, string name)
             {
             }
 
             var webSocketInfoMock = new Mock<IWebSocketInfo>();
             webSocketInfoMock.Setup(ws => ws.IsConnected).Returns(true);
-            webSocketInfoMock.Setup(ws => ws.SendAsync(It.IsAny<string>())).Returns(Task.FromResult(true));
+            webSocketInfoMock.Setup(ws => ws.SendAsync(It.IsAny<string>()))
+                .ReturnsAsync((true, DateTime.UtcNow, 0L));
 
             var manager = new WebSocketConnectionManager(loggerMock.Object, uri, jwtToken, metricsRegistryMock.Object,
                 IncrementCounter, DecrementCounter, 1, "TestSocket", OnMessageReceived);
@@ -257,14 +260,15 @@ namespace Alor.OpenAPI.Tests
             {
             }
 
-            void OnMessageReceived((byte[], int, DateTime) data, string name)
+            void OnMessageReceived((byte[], int, DateTime, DateTime, long) data, string name)
             {
             }
 
             var webSocketInfoMock = new Mock<IWebSocketInfo>();
             webSocketInfoMock.Setup(ws => ws.IsConnected).Returns(false);
             webSocketInfoMock.Setup(ws => ws.StartAsync()).Returns(Task.CompletedTask);
-            webSocketInfoMock.Setup(ws => ws.SendAsync(It.IsAny<string>())).Returns(Task.FromResult(true));
+            webSocketInfoMock.Setup(ws => ws.SendAsync(It.IsAny<string>()))
+                .ReturnsAsync((true, DateTime.UtcNow, 0L));
 
             var manager = new WebSocketConnectionManager(loggerMock.Object, uri, jwtToken, metricsRegistryMock.Object,
                 IncrementCounter, DecrementCounter, 1, "TestSocket", OnMessageReceived);
@@ -306,7 +310,7 @@ namespace Alor.OpenAPI.Tests
                 decrementCount++;
             }
 
-            void OnMessageReceived((byte[], int, DateTime) data, string name)
+            void OnMessageReceived((byte[], int, DateTime, DateTime, long) data, string name)
             {
             }
 
@@ -314,7 +318,8 @@ namespace Alor.OpenAPI.Tests
             webSocketInfoMock.SetupProperty(ws => ws.Closed);
             webSocketInfoMock.Setup(ws => ws.Name).Returns("TestSocket");
             webSocketInfoMock.Setup(ws => ws.IsConnected).Returns(false);
-            webSocketInfoMock.Setup(ws => ws.SendAsync(It.IsAny<string>())).ReturnsAsync(true);
+            webSocketInfoMock.Setup(ws => ws.SendAsync(It.IsAny<string>()))
+                .ReturnsAsync((true, DateTime.UtcNow, 0L));
             webSocketInfoMock.Setup(ws => ws.StartAsync()).Returns(Task.CompletedTask);
             webSocketInfoMock.Setup(ws => ws.CloseSocketAndResetCounters()).Returns(Task.CompletedTask);
             webSocketInfoMock.Setup(ws => ws.Opcodes).Returns(new ConcurrentDictionary<string, string>()
@@ -362,14 +367,15 @@ namespace Alor.OpenAPI.Tests
             {
             }
 
-            void OnMessageReceived((byte[], int, DateTime) data, string name)
+            void OnMessageReceived((byte[], int, DateTime, DateTime, long) data, string name)
             {
             }
 
             var webSocketInfoMock = new Mock<IWebSocketInfo>();
             webSocketInfoMock.SetupProperty(ws => ws.Error);
             webSocketInfoMock.Setup(ws => ws.IsConnected).Returns(false);
-            webSocketInfoMock.Setup(ws => ws.SendAsync(It.IsAny<string>())).Returns(Task.FromResult(true));
+            webSocketInfoMock.Setup(ws => ws.SendAsync(It.IsAny<string>()))
+                .ReturnsAsync((true, DateTime.UtcNow, 0L));
 
             var manager = new WebSocketConnectionManager(loggerMock.Object, uri, jwtToken, metricsRegistryMock.Object,
                 IncrementCounter, DecrementCounter, 1, "TestSocket", OnMessageReceived);
@@ -409,14 +415,15 @@ namespace Alor.OpenAPI.Tests
             {
             }
 
-            void OnMessageReceived((byte[], int, DateTime) data, string name)
+            void OnMessageReceived((byte[], int, DateTime, DateTime, long) data, string name)
             {
             }
 
             var webSocketInfoMock = new Mock<IWebSocketInfo>();
             webSocketInfoMock.SetupProperty(ws => ws.Warning);
             webSocketInfoMock.Setup(ws => ws.IsConnected).Returns(false);
-            webSocketInfoMock.Setup(ws => ws.SendAsync(It.IsAny<string>())).Returns(Task.FromResult(true));
+            webSocketInfoMock.Setup(ws => ws.SendAsync(It.IsAny<string>()))
+                .ReturnsAsync((true, DateTime.UtcNow, 0L));
 
             var manager = new WebSocketConnectionManager(loggerMock.Object, uri, jwtToken, metricsRegistryMock.Object,
                 IncrementCounter, DecrementCounter, 1, "TestSocket", OnMessageReceived);
@@ -454,7 +461,7 @@ namespace Alor.OpenAPI.Tests
             {
             }
 
-            void OnMessageReceived((byte[], int, DateTime) data, string name)
+            void OnMessageReceived((byte[], int, DateTime, DateTime, long) data, string name)
             {
             }
 

@@ -18,6 +18,7 @@ namespace Alor.OpenAPI.Interfaces
         void SetWsResponseMessageHandler(Action<WsResponseMessage>? handler);
         void SetWsResponseCommandMessageHandler(Action<WsResponseCommandMessage>? handler);
         void SetRawWireMessageHandler(Action<WsRawWireMessage>? handler);
+        void SetWsParseFailureHandler(Action<WsParseFailure>? handler);
         void SetRawCwsCommandMessageHandler(Action<CwsRawCommandMessage>? handler);
     }
 }

@@ -24,7 +24,6 @@ namespace Alor.OpenAPI.Tests
             // Act
             var handler =
                 new WebSocketMessageHandler(loggerMock.Object, commandLoggerMock.Object, Utilities.AlorOpenApiLogLevel.Fatal, parameters, null, null);
-
             // Assert
             Assert.NotNull(handler);
             Assert.Equal(loggerMock.Object,
@@ -143,7 +142,7 @@ namespace Alor.OpenAPI.Tests
             handler.UpdateWsOrderBookSimpleUserDelegate(messageHandlerMock.Object);
 
             // Act
-            handler.MessageReceived((fakeMessage, fakeMessage.Length, DateTime.UtcNow), "TestSocket");
+            handler.MessageReceived((fakeMessage, fakeMessage.Length, DateTime.UtcNow, DateTime.UtcNow, 0L), "TestSocket");
 
             // Assert
             messageHandlerMock.Verify(m => m(It.IsAny<WsOrderBookSimple>()), Times.Once);
@@ -161,15 +160,23 @@ namespace Alor.OpenAPI.Tests
                 new WebSocketMessageHandler(loggerMock.Object, commandLoggerMock.Object, Utilities.AlorOpenApiLogLevel.Fatal, parameters, null, null);
             var fakeMessage =
                 "{\"data\"{\"snapshot\":true,\"bids\":[],\"asks\":[],\"timestamp\":1710881402,\"ms_timestamp\":1710881402182,\"existing\":true},\"guid\":\"b0_3\"}"u8.ToArray();
+            WsParseFailure? parseFailure = null;
+            handler.SetWsParseFailureHandler(failure => parseFailure = failure);
             var messageHandlerMock = new Mock<Action<WsOrderBookSimple>>();
             handler.UpdateWsOrderBookSimpleUserDelegate(messageHandlerMock.Object);
 
             // Act
-            handler.MessageReceived((fakeMessage, fakeMessage.Length, DateTime.UtcNow), "TestSocket");
+            handler.MessageReceived((fakeMessage, fakeMessage.Length, DateTime.UtcNow, DateTime.UtcNow, 0L), "TestSocket");
 
             // Assert
             messageHandlerMock.Verify(m => m(It.IsAny<WsOrderBookSimple>()), Times.Never);
-            loggerMock.Verify(log => log.Error(It.IsAny<string>()), Times.AtLeastOnce());
+            loggerMock.Verify(log => log.Error(
+                It.IsAny<Exception>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()),
+                Times.Once());
+            Assert.NotNull(parseFailure);
+            Assert.Equal("TestSocket", parseFailure.SocketName);
+            Assert.Equal("b0", parseFailure.SubscriptionMarker);
+            Assert.Equal(fakeMessage.Length, parseFailure.PayloadLength);
         }
 
         [Fact]
@@ -184,7 +191,7 @@ namespace Alor.OpenAPI.Tests
             var fakeMessage = "{\"type\":\"test-type\",\"data\":\"test-data\"}"u8.ToArray();
 
             // Act
-            handler.MessageReceived((fakeMessage, fakeMessage.Length, DateTime.UtcNow), "TestSocket");
+            handler.MessageReceived((fakeMessage, fakeMessage.Length, DateTime.UtcNow, DateTime.UtcNow, 0L), "TestSocket");
 
             // Assert
             loggerMock.Verify(log => log.Verbose(It.IsAny<string>()), Times.Once);
@@ -274,7 +281,7 @@ namespace Alor.OpenAPI.Tests
             // Act
             var marker =
                 (ReadOnlyMemory<byte>?)methodInfo?.Invoke(null,
-                    [(Encoding.UTF8.GetBytes(message), message.Length, DateTime.UtcNow), startPattern, endPattern]) ??
+                    [(Encoding.UTF8.GetBytes(message), message.Length, DateTime.UtcNow, DateTime.UtcNow, 0L), startPattern, endPattern]) ??
                 ReadOnlyMemory<byte>.Empty;
 
             // Assert
@@ -297,7 +304,7 @@ namespace Alor.OpenAPI.Tests
             var messageBytes = Encoding.UTF8.GetBytes(message);
 
             // Act
-            handler.MessageReceived((messageBytes, message.Length, DateTime.UtcNow), "TestSocket");
+            handler.MessageReceived((messageBytes, message.Length, DateTime.UtcNow, DateTime.UtcNow, 0L), "TestSocket");
 
             // Assert
             messageHandlerMock.Verify(m => m(It.IsAny<WsResponseMessage>()), Times.Once);
