@@ -54,7 +54,8 @@ namespace Alor.OpenAPI.Managers
                     sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
                     onRetryAsync: (exception, timeSpan, retryCount, context) =>
                     {
-                        SendSocketStatus(AlorOpenApiLogLevel.Warning, $"Попытка {retryCount}: {exception.Message}");
+                        SendSocketStatus(AlorOpenApiLogLevel.Warning,
+                            $"{_webSocketInfo.Name}: Попытка переподключения {retryCount} не удалась ({exception.GetType().Name}): {exception.Message}");
                         return Task.CompletedTask;
                     });
 
@@ -78,7 +79,7 @@ namespace Alor.OpenAPI.Managers
                     onRetryAsync: (exception, timeSpan, context) =>
                     {
                         SendSocketStatus(AlorOpenApiLogLevel.Warning,
-                            $"Повторяем цикл из-за: {exception.Message}. Ждем {timeSpan.TotalSeconds} секунд.");
+                            $"{_webSocketInfo.Name}: Повторяем цикл из-за: {exception.Message}. Ждем {timeSpan.TotalSeconds} секунд.");
                         return Task.CompletedTask;
                     });
 
@@ -326,7 +327,10 @@ namespace Alor.OpenAPI.Managers
 
             try
             {
-                ws.LastReconnectStartUtc = DateTime.UtcNow;
+                var reconnectStartUtc = DateTime.UtcNow;
+                ws.LastReconnectStartUtc = reconnectStartUtc;
+                SendSocketStatus(AlorOpenApiLogLevel.Warning,
+                    $"{ws.Name}: Начинаем переподключение (reconnectCount={ws.ReconnectCount})");
                 await _policyWrap.ExecuteAsync(async () =>
                 {
                     SendSocketStatus(AlorOpenApiLogLevel.Information, $"{ws.Name}: Перезапуск сокета");
@@ -335,6 +339,8 @@ namespace Alor.OpenAPI.Managers
 
                     await StartSocketAndSubscribe(ws);
                 });
+                SendSocketStatus(AlorOpenApiLogLevel.Information,
+                    $"{ws.Name}: Переподключение успешно за {(DateTime.UtcNow - reconnectStartUtc).TotalSeconds:0.#} с (reconnectCount={ws.ReconnectCount})");
             }
             finally
             {

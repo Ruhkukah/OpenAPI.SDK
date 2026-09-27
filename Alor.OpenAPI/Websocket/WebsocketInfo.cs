@@ -56,6 +56,13 @@ namespace Alor.OpenAPI.Websocket
         private Task _multiplexer = Task.CompletedTask;
 
         private int _closeStarted;
+        private readonly object _lifecycleLock = new();
+
+        // Every await on the reconnect path is bounded so a hung network call surfaces as an exception
+        // (retried by the connection manager) instead of blocking the lifecycle forever.
+        internal TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(15);
+        internal TimeSpan CloseTimeout { get; init; } = TimeSpan.FromSeconds(5);
+        internal TimeSpan SendTimeout { get; init; } = TimeSpan.FromSeconds(10);
 
         public int? GetReaderCount() => _bucket?.Reader.Count;
 
@@ -73,11 +80,15 @@ namespace Alor.OpenAPI.Websocket
 
         public async Task StartAsync()
         {
-            Volatile.Write(ref _closeStarted, 0);
-            _webSocketClient = webSocketClientFactory();
+            var ws = webSocketClientFactory();
+            var cts = new CancellationTokenSource();
+            lock (_lifecycleLock)
+            {
+                _webSocketClient = ws;
+                _cts = cts;
+                _closeStarted = 0;
+            }
 
-            var ws = _webSocketClient;
-            var cts = _cts = new();
             _bucket = Channel.CreateBounded<(byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks)>(
                 new BoundedChannelOptions(int.MaxValue)
                 {
@@ -87,10 +98,22 @@ namespace Alor.OpenAPI.Websocket
                 });
             _lastConsumerSlowWarn = DateTime.UtcNow;
 
-            await ws.ConnectAsync(cts.Token); //can fail but probaly OK
+            using (var connectCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token))
+            {
+                connectCts.CancelAfter(ConnectTimeout);
+                try
+                {
+                    await ws.ConnectAsync(connectCts.Token).WaitAsync(connectCts.Token);
+                }
+                catch (OperationCanceledException) when (!cts.IsCancellationRequested)
+                {
+                    throw new TimeoutException(
+                        $"Websocket '{Name}': подключение не завершилось за {ConnectTimeout.TotalSeconds} с");
+                }
+            }
 
             _multiplexer = StartMultiplexerLoop(_bucket);
-            _listener = StartListenerLoop();
+            _listener = StartListenerLoop(ws, cts, _bucket);
             _ = _multiplexer.ContinueWith(l => Finisher(l, cts, ws), CancellationToken.None);
             _ = _listener.ContinueWith(l => Finisher(l, cts, ws), CancellationToken.None);
         }
@@ -150,21 +173,22 @@ namespace Alor.OpenAPI.Websocket
             }
         }
 
-        private async Task StartListenerLoop()
+        // The loop is bound to the connection it was started for: reading the shared fields here would let an old
+        // loop consume (or spin on a cleared) client of a newer connection.
+        private async Task StartListenerLoop(IWebSocketClient webSocketClient, CancellationTokenSource cts,
+            Channel<(byte[] data, int len, DateTime timestamp, DateTime firstByteTimestampUtc, long receiveTimestampTicks)> bucket)
         {
             var buf = new byte[1024 * 1024]; //actually MTE should be ~1400 bytes
 
-            while (!_cts.IsCancellationRequested)
+            while (!cts.IsCancellationRequested)
             {
                 var length = 0;
                 var receiveTimestampTicks = 0L;
                 var firstByteTimestampUtc = default(DateTime);
-                while (!_cts.IsCancellationRequested)
+                while (!cts.IsCancellationRequested)
                 {
-                    if (_webSocketClient == null) continue;
-
-                    var rr = await _webSocketClient.ReceiveAsync(
-                        new ArraySegment<byte>(buf, length, buf.Length - length), _cts.Token);
+                    var rr = await webSocketClient.ReceiveAsync(
+                        new ArraySegment<byte>(buf, length, buf.Length - length), cts.Token);
                     if (rr.Count > 0 && receiveTimestampTicks == 0L)
                     {
                         firstByteTimestampUtc = DateTime.UtcNow;
@@ -186,16 +210,16 @@ namespace Alor.OpenAPI.Websocket
                 var timestampNow = DateTime.UtcNow;
                 var msg = ArrayPool<byte>.Shared.Rent(length);
                 Buffer.BlockCopy(buf, 0, msg, 0, length);
-                if (_bucket != null && _bucket.Writer.TryWrite((msg, length, timestampNow, firstByteTimestampUtc, receiveTimestampTicks)))
+                if (bucket.Writer.TryWrite((msg, length, timestampNow, firstByteTimestampUtc, receiveTimestampTicks)))
                 {
                     ReceivedCount++;
                     LastUpdate = timestampNow;
 
-                    if (_bucket.Reader.Count > 5000 && (timestampNow - _lastConsumerSlowWarn).TotalSeconds >= 10)
+                    if (bucket.Reader.Count > 5000 && (timestampNow - _lastConsumerSlowWarn).TotalSeconds >= 10)
                     {
                         _lastConsumerSlowWarn = timestampNow;
                         Warning?.Invoke(this,
-                            $"Websocket '{Name}' consumers are too slow, messages in queue: {_bucket.Reader.Count}!");
+                            $"Websocket '{Name}' consumers are too slow, messages in queue: {bucket.Reader.Count}!");
                     }
                 }
             }
@@ -209,9 +233,22 @@ namespace Alor.OpenAPI.Websocket
                 if (webSocketClient is not { State: WebSocketState.Open })
                     return (false, default, 0L);
 
+                // Cancelling a stuck send aborts the socket, so the listener fails and the socket is restarted.
+                var cts = _cts;
+                using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+                sendCts.CancelAfter(SendTimeout);
                 var sendTimestampUtc = DateTime.UtcNow;
                 var sendTimestampTicks = Stopwatch.GetTimestamp();
-                await webSocketClient.SendAsync(Encoding.UTF8.GetBytes(json), WebSocketMessageType.Text, true, _cts.Token);
+                try
+                {
+                    await webSocketClient.SendAsync(Encoding.UTF8.GetBytes(json), WebSocketMessageType.Text, true, sendCts.Token)
+                        .WaitAsync(sendCts.Token);
+                }
+                catch (OperationCanceledException) when (!cts.IsCancellationRequested)
+                {
+                    throw new TimeoutException(
+                        $"Websocket '{Name}': отправка не завершилась за {SendTimeout.TotalSeconds} с");
+                }
                 SentCount++;
                 return (true, sendTimestampUtc, sendTimestampTicks);
             }
@@ -224,15 +261,25 @@ namespace Alor.OpenAPI.Websocket
 
         private async Task CloseAsync(CancellationTokenSource cts, IWebSocketClient? ws, Exception? error = null)
         {
-            if (Interlocked.CompareExchange(ref _closeStarted, 1, 0) != 0)
-                return;
+            lock (_lifecycleLock)
+            {
+                // A loop of an already replaced connection must neither close nor report the current one.
+                if (ws != null && _webSocketClient != null && !ReferenceEquals(ws, _webSocketClient))
+                    return;
+                if (_closeStarted != 0)
+                    return;
+                _closeStarted = 1;
+            }
 
             try
             {
                 if (!cts.IsCancellationRequested)
-                    await cts.CancelAsync();
-                await _multiplexer;
-                await _listener;
+                    await cts.CancelAsync().WaitAsync(CloseTimeout);
+                await Task.WhenAll(_multiplexer, _listener).WaitAsync(CloseTimeout);
+            }
+            catch (TimeoutException ex)
+            {
+                SendSocketStatus?.Invoke(AlorOpenApiLogLevel.Warning, $"Ошибка при закрытии задач: {ex.Message}");
             }
             catch (Exception ex)
             {
@@ -242,7 +289,9 @@ namespace Alor.OpenAPI.Websocket
             {
                 try
                 {
-                    await (ws?.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None) ?? Task.CompletedTask);
+                    // Dispose below aborts a close handshake that did not finish in time.
+                    await (ws?.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None)
+                        .WaitAsync(CloseTimeout) ?? Task.CompletedTask);
                 }
                 catch (Exception ex)
                 {
@@ -251,7 +300,7 @@ namespace Alor.OpenAPI.Websocket
                 finally
                 {
                     ws?.Dispose();
-                    _webSocketClient = null;
+                    Interlocked.CompareExchange(ref _webSocketClient, null, ws);
                 }
             }
 
